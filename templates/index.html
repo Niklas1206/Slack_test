@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview Agent</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], input[type="tel"], select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .interviews-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .interviews-table th,
+        .interviews-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .interviews-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        .interviews-table tr:hover {
+            background-color: #f5f5f5;
+        }
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .badge.pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .badge.in-progress {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        .badge.completed {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .score {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .score.high {
+            color: #28a745;
+        }
+        .score.medium {
+            color: #ffc107;
+        }
+        .score.low {
+            color: #dc3545;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .system-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #e9ecef;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .demo-actions {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+        }
+        .demo-actions button {
+            background-color: #6c757d;
+            margin-right: 10px;
+            font-size: 14px;
+            padding: 8px 16px;
+        }
+        .demo-actions button:hover {
+            background-color: #545b62;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AI Interview Agent</h1>
+        
+        <div class="system-info">
+            <div>Status: <span id="systemStatus">Laden...</span></div>
+            <div>Modus: <span id="systemMode">-</span></div>
+            <div>Version: <span id="systemVersion">-</span></div>
+        </div>
+
+        <div class="form-group">
+            <label for="candidatePhone">Telefonnummer des Kandidaten:</label>
+            <input type="tel" id="candidatePhone" placeholder="+49123456789" required>
+        </div>
+
+        <div class="form-group">
+            <label for="position">Position:</label>
+            <select id="position">
+                <option value="Software Developer">Software Developer</option>
+                <option value="Senior Software Engineer">Senior Software Engineer</option>
+                <option value="Frontend Developer">Frontend Developer</option>
+                <option value="Backend Developer">Backend Developer</option>
+                <option value="Full Stack Developer">Full Stack Developer</option>
+                <option value="DevOps Engineer">DevOps Engineer</option>
+                <option value="Data Scientist">Data Scientist</option>
+                <option value="Product Manager">Product Manager</option>
+            </select>
+        </div>
+
+        <button onclick="startInterview()" id="startBtn">Interview starten</button>
+
+        <div class="demo-actions">
+            <button onclick="completeLastInterview()" id="completeBtn">Letztes Interview abschliessen (Demo)</button>
+            <button onclick="loadInterviews()">Interviews aktualisieren</button>
+        </div>
+
+        <div id="status"></div>
+        <div class="loading" id="loading">Verarbeitung läuft...</div>
+    </div>
+
+    <div class="container">
+        <h2>Interview-Übersicht</h2>
+        <table class="interviews-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Telefon</th>
+                    <th>Position</th>
+                    <th>Status</th>
+                    <th>Score</th>
+                    <th>Erstellt</th>
+                    <th>Abgeschlossen</th>
+                </tr>
+            </thead>
+            <tbody id="interviewsTableBody">
+                <tr>
+                    <td colspan="7" style="text-align: center;">Lade Interviews...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        let lastCallId = null;
+
+        // System-Status beim Laden abrufen
+        async function loadSystemStatus() {
+            try {
+                const response = await fetch('/status');
+                const status = await response.json();
+                
+                document.getElementById('systemStatus').textContent = status.status;
+                document.getElementById('systemMode').textContent = status.mode;
+                document.getElementById('systemVersion').textContent = status.version;
+                
+                // Demo-Button nur im Demo-Modus anzeigen
+                const completeBtn = document.getElementById('completeBtn');
+                completeBtn.style.display = status.mode === 'demo' ? 'inline-block' : 'none';
+                
+            } catch (error) {
+                document.getElementById('systemStatus').textContent = 'Fehler';
+                console.error('Status laden fehlgeschlagen:', error);
+            }
+        }
+
+        // Interview starten
+        async function startInterview() {
+            const phone = document.getElementById('candidatePhone').value;
+            const position = document.getElementById('position').value;
+            
+            if (!phone) {
+                showStatus('Bitte Telefonnummer eingeben', 'error');
+                return;
+            }
+
+            const startBtn = document.getElementById('startBtn');
+            startBtn.disabled = true;
+            startBtn.textContent = 'Wird gestartet...';
+
+            try {
+                const response = await fetch('/start-interview', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        candidate_phone: phone,
+                        position: position
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    lastCallId = result.call_id;
+                    showStatus(`Interview gestartet! Call-ID: ${result.call_id}`, 'success');
+                    
+                    // Formular zurücksetzen
+                    document.getElementById('candidatePhone').value = '';
+                    
+                    // Interviews neu laden
+                    setTimeout(loadInterviews, 1000);
+                } else {
+                    showStatus(`Fehler: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`Netzwerkfehler: ${error.message}`, 'error');
+            } finally {
+                startBtn.disabled = false;
+                startBtn.textContent = 'Interview starten';
+            }
+        }
+
+        // Letztes Interview abschliessen (Demo)
+        async function completeLastInterview() {
+            if (!lastCallId) {
+                showStatus('Kein aktives Interview gefunden', 'error');
+                return;
+            }
+
+            const completeBtn = document.getElementById('completeBtn');
+            completeBtn.disabled = true;
+            completeBtn.textContent = 'Wird verarbeitet...';
+
+            document.getElementById('loading').style.display = 'block';
+
+            try {
+                const response = await fetch('/demo/complete-interview', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        call_id: lastCallId
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showStatus(`Interview wird verarbeitet: ${lastCallId}`, 'info');
+                    
+                    // Nach 3 Sekunden Interviews neu laden
+                    setTimeout(() => {
+                        loadInterviews();
+                        document.getElementById('loading').style.display = 'none';
+                    }, 3000);
+                } else {
+                    showStatus(`Fehler: ${result.error}`, 'error');
+                    document.getElementById('loading').style.display = 'none';
+                }
+            } catch (error) {
+                showStatus(`Netzwerkfehler: ${error.message}`, 'error');
+                document.getElementById('loading').style.display = 'none';
+            } finally {
+                completeBtn.disabled = false;
+                completeBtn.textContent = 'Letztes Interview abschliessen (Demo)';
+            }
+        }
+
+        // Interviews laden
+        async function loadInterviews() {
+            try {
+                const response = await fetch('/interviews');
+                const interviews = await response.json();
+
+                const tbody = document.getElementById('interviewsTableBody');
+                tbody.innerHTML = '';
+
+                if (interviews.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Keine Interviews gefunden</td></tr>';
+                    return;
+                }
+
+                interviews.reverse(); // Neueste zuerst
+                
+                interviews.forEach(interview => {
+                    const row = document.createElement('tr');
+                    
+                    // Score-Styling
+                    let scoreClass = '';
+                    let scoreText = '-';
+                    if (interview.score !== null) {
+                        scoreText = interview.score.toFixed(1);
+                        if (interview.score >= 7) scoreClass = 'high';
+                        else if (interview.score >= 5) scoreClass = 'medium';
+                        else scoreClass = 'low';
+                    }
+
+                    // Datum formatieren
+                    const formatDate = (dateStr) => {
+                        if (!dateStr) return '-';
+                        const date = new Date(dateStr);
+                        return date.toLocaleString('de-DE');
+                    };
+
+                    row.innerHTML = `
+                        <td>${interview.id}</td>
+                        <td>${interview.candidate_phone}</td>
+                        <td>${interview.position}</td>
+                        <td><span class="badge ${interview.status}">${interview.status}</span></td>
+                        <td><span class="score ${scoreClass}">${scoreText}</span></td>
+                        <td>${formatDate(interview.created_at)}</td>
+                        <td>${formatDate(interview.completed_at)}</td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                const tbody = document.getElementById('interviewsTableBody');
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: red;">Fehler beim Laden der Interviews</td></tr>';
+                console.error('Interviews laden fehlgeschlagen:', error);
+            }
+        }
+
+        // Status-Nachricht anzeigen
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+            
+            // Nach 5 Sekunden ausblenden
+            setTimeout(() => {
+                statusDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        // Enter-Taste im Telefon-Input
+        document.getElementById('candidatePhone').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                startInterview();
+            }
+        });
+
+        // Initial laden
+        loadSystemStatus();
+        loadInterviews();
+
+        // Auto-refresh alle 30 Sekunden
+        setInterval(loadInterviews, 30000);
+    </script>
+</body>
+</html>
