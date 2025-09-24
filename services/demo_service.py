@@ -5,7 +5,7 @@ Demo Service - Simuliert API-Calls für Testzwecke ohne echte API-Keys
 import random
 import time
 import json
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 class DemoVapiClient:
     """Demo-Version des Vapi Clients für Tests ohne echte API-Keys"""
@@ -125,7 +125,7 @@ Kandidat: Ja, wie ist die technische Roadmap für die nächsten zwei Jahre? Welc
         }
 
 class DemoSlackNotifier:
-    '''Demo-Version des Slack Notifiers - sendet echte Slack-Nachrichten.'''
+    """Demo-Version des Slack Notifiers - sendet echte Slack-Nachrichten"""
 
     def __init__(self):
         import os
@@ -139,96 +139,42 @@ class DemoSlackNotifier:
             print('[INFO] Using REAL Slack notifications')
         else:
             self.use_real_slack = False
+            self.channel = os.getenv('SLACK_CHANNEL', 'bewerber')
             print('[INFO] Using simulated Slack notifications')
 
-    def send_interview_result(self, evaluation: Dict[str, Any], candidate_phone: str, call_id: str):
-        '''Sendet Interview-Ergebnis an Slack (echt oder simuliert).'''
-        empfehlung = evaluation.get('gesamtbewertung', {}).get('empfehlung', 'UNENTSCHIEDEN')
-        score = evaluation.get('gesamtbewertung', {}).get('score', 0)
-        reason_text = self._build_reason_text(evaluation)
+    def send_interview_result(
+        self,
+        evaluation: Dict[str, Any],
+        candidate_phone: str,
+        call_id: str,
+        transcript_url: Optional[str] = None,
+    ):
+        """Sendet Interview-Ergebnis an Slack (echt oder simuliert)."""
+        from .slack_notifier import build_interview_payload
+
+        payload = build_interview_payload(evaluation, candidate_phone, call_id, transcript_url)
 
         if self.use_real_slack:
-            return self._send_real_slack_message(evaluation, candidate_phone, call_id, reason_text)
+            return self._send_real_slack_message(payload)
 
-        print("\n[DEMO] Slack-Nachricht wuerde gesendet werden:")
-        print(f"Kanal: #{getattr(self, 'channel', 'bewerber')}")
-        print(f"Kandidat: {candidate_phone}")
-        print(f"Score: {score}/10")
-        print(f"Empfehlung: {empfehlung}")
-        print(f"Call ID: {call_id}")
-        if reason_text:
-            print('Begruendung:')
-            print(reason_text)
-        if 'einzelbewertungen' in evaluation:
-            for kategorie, bewertung in evaluation['einzelbewertungen'].items():
-                print(f"  - {kategorie.title()}: {bewertung.get('score', 0)}/10")
-        if evaluation.get('naechste_schritte'):
-            print(f"Naechste Schritte: {evaluation['naechste_schritte']}")
+        print('\n[DEMO] Slack-Nachricht (Simulation):')
+        print(f'Kanal: #{self.channel}')
+        print(f'Kandidat: {candidate_phone}')
+        print(f'Empfehlung: {payload["empfehlung"]} ({payload["score"]}/10)')
+        for block in payload['blocks']:
+            if block.get('type') == 'section':
+                text = block.get('text') or {}
+                if isinstance(text, dict) and text.get('type') == 'mrkdwn':
+                    print(text.get('text', ''))
         return {'ts': f'demo_message_{random.randint(1000, 9999)}'}
 
-    def _send_real_slack_message(self, evaluation: Dict[str, Any], candidate_phone: str, call_id: str, reason_text: str):
-        '''Sendet echte Slack-Nachricht.'''
+    def _send_real_slack_message(self, payload: Dict[str, Any]):
+        """Sendet echte Slack-Nachricht."""
         try:
-            empfehlung = evaluation.get('gesamtbewertung', {}).get('empfehlung', 'UNENTSCHIEDEN')
-            score = evaluation.get('gesamtbewertung', {}).get('score', 0)
-
-            color_map = {
-                'EINLADEN': 'good',
-                'ABLEHNEN': 'danger',
-                'UNENTSCHIEDEN': 'warning',
-            }
-            color = color_map.get(empfehlung, 'good')
-
-            blocks = [
-                {
-                    'type': 'header',
-                    'text': {
-                        'type': 'plain_text',
-                        'text': f'Interview abgeschlossen - {empfehlung}',
-                    },
-                },
-                {
-                    'type': 'section',
-                    'fields': [
-                        {'type': 'mrkdwn', 'text': f'*Kandidat:* {candidate_phone}'},
-                        {'type': 'mrkdwn', 'text': f'*Gesamtscore:* {score}/10'},
-                        {'type': 'mrkdwn', 'text': f'*Call ID:* {call_id}'},
-                        {'type': 'mrkdwn', 'text': f'*Empfehlung:* {empfehlung}'},
-                    ],
-                },
-            ]
-
-            if reason_text:
-                blocks.append({
-                    'type': 'section',
-                    'text': {'type': 'mrkdwn', 'text': f'*Begruendung:*\\n{reason_text}'},
-                })
-
-            einzelbewertungen = evaluation.get('einzelbewertungen', {})
-            if einzelbewertungen:
-                lines = []
-                for kategorie, bewertung in einzelbewertungen.items():
-                    detail = f"- {kategorie.title()}: {bewertung.get('score', 0)}/10"
-                    kommentar = bewertung.get('kommentar', '').strip()
-                    if kommentar:
-                        detail += f" ({kommentar})"
-                    lines.append(detail)
-                if lines:
-                    blocks.append({
-                        'type': 'section',
-                        'text': {'type': 'mrkdwn', 'text': '*Einzelbewertungen:*\\n' + '\\n'.join(lines)},
-                    })
-
-            if evaluation.get('naechste_schritte'):
-                blocks.append({
-                    'type': 'section',
-                    'text': {'type': 'mrkdwn', 'text': f"*Naechste Schritte:*\\n{evaluation['naechste_schritte']}"},
-                })
-
             response = self.client.chat_postMessage(
                 channel=self.channel,
-                blocks=blocks,
-                attachments=[{'color': color, 'fallback': f'Interview Result: {empfehlung}'}],
+                blocks=payload['blocks'],
+                attachments=[{'color': payload['color'], 'fallback': f"Interview Result: {payload['empfehlung']}"}],
             )
             print(f'[SUCCESS] Slack message sent to #{self.channel}')
             return response
@@ -238,35 +184,19 @@ class DemoSlackNotifier:
             return None
 
     def send_error_notification(self, error_message: str, call_id: str = None):
-        '''Sendet Fehler-Benachrichtigung.'''
+        """Sendet Fehler-Benachrichtigung."""
         if self.use_real_slack:
             try:
                 self.client.chat_postMessage(
                     channel=self.channel,
-                    text=f"FEHLER: Interview System Error\\n{error_message}\\nCall ID: {call_id or 'Unknown'}",
+                    text=f"FEHLER: Interview System Error\n{error_message}\nCall ID: {call_id or 'Unknown'}",
                 )
             except Exception as exc:
                 print(f'[ERROR] Slack error notification failed: {exc}')
         else:
-            print("\n[DEMO] Fehler-Slack-Nachricht:")
-            print(f"Error: {error_message}")
+            print('\n[DEMO] Fehler-Slack-Nachricht:')
+            print(f'Error: {error_message}')
             print(f"Call ID: {call_id or 'Unknown'}")
-
-    @staticmethod
-    def _build_reason_text(evaluation: Dict[str, Any]) -> str:
-        summary = evaluation.get('zusammenfassung', '').strip()
-        strengths = [item for item in evaluation.get('staerken', []) if item]
-        weaknesses = [item for item in evaluation.get('schwaechen', []) if item]
-
-        sections = []
-        if summary:
-            sections.append(summary)
-        if strengths:
-            sections.append('*Pluspunkte:*\\n' + '\\n'.join(f'- {item}' for item in strengths))
-        if weaknesses:
-            sections.append('*Zu beachten:*\\n' + '\\n'.join(f'- {item}' for item in weaknesses))
-
-        return '\\n\\n'.join(sections).strip()
 
 class DemoEvaluator:
     """Demo-Version des Interview Evaluators"""

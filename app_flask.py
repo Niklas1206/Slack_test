@@ -16,6 +16,12 @@ from services.demo_service import DemoVapiClient, DemoSlackNotifier, DemoEvaluat
 from services.gemini_service import GeminiEvaluator
 
 load_dotenv()
+def build_transcript_url(call_id: str) -> str:
+    base = os.getenv("TRANSCRIPT_BASE_URL")
+    if not base:
+        port = os.getenv("API_PORT", "8000")
+        base = f"http://localhost:{port}"
+    return f"{base.rstrip('/')}/interviews/{call_id}/transcript"
 
 app = Flask(__name__)
 db_manager = DatabaseManager()
@@ -115,51 +121,77 @@ def vapi_webhook():
 def process_completed_call(call_id: str):
     """Verarbeitet abgeschlossenen Anruf"""
     try:
-        # Hole Call-Details von Vapi
         call_details = vapi_client.get_call_details(call_id)
         transcript = call_details.get('transcript', '')
-        
+        recording_url = call_details.get('recording_url')
+
         if not transcript:
             slack_notifier.send_error_notification(
-                "Kein Transkript verfügbar", call_id
+                "Kein Transkript verfuegbar", call_id
             )
             return
-        
-        # Bewerte Interview
+
         evaluation = evaluator.evaluate_interview(transcript)
         overall_score = evaluator.calculate_overall_score(
             evaluation.get('einzelbewertungen', {})
         )
-        
-        # Update DB
+        recommendation = evaluation.get('gesamtbewertung', {}).get('empfehlung')
+        next_steps = evaluation.get('naechste_schritte')
+        transcript_url = build_transcript_url(call_id)
+
         db_session = db_manager.get_session()
         try:
             session = db_session.query(InterviewSession).filter_by(
                 vapi_call_id=call_id
             ).first()
-            
+
             if session:
                 session.status = "completed"
                 session.transcript = transcript
                 session.evaluation_score = overall_score
-                session.set_evaluation_data(evaluation)  # JSON-Helper verwenden
+                session.set_evaluation_data(evaluation)
+                session.recommendation = recommendation
+                session.next_steps = next_steps
+                session.recording_url = recording_url
                 session.completed_at = datetime.utcnow()
                 db_session.commit()
-                
-                # Sende Slack-Benachrichtigung
+
                 slack_notifier.send_interview_result(
                     evaluation=evaluation,
                     candidate_phone=session.candidate_phone,
-                    call_id=call_id
+                    call_id=call_id,
+                    transcript_url=transcript_url,
                 )
-                
+
         finally:
             db_session.close()
-            
+
     except Exception as e:
         slack_notifier.send_error_notification(
             f"Processing failed: {str(e)}", call_id
         )
+
+
+@app.route('/interviews/<call_id>/transcript', methods=['GET'])
+def get_interview_transcript(call_id):
+    db_session = db_manager.get_session()
+    try:
+        session = db_session.query(InterviewSession).filter_by(
+            vapi_call_id=call_id
+        ).first()
+        if not session:
+            return jsonify({'error': 'Interview not found'}), 404
+        if not session.transcript:
+            return jsonify({'error': 'Transcript not available'}), 404
+        return jsonify({
+            'call_id': session.vapi_call_id,
+            'candidate_phone': session.candidate_phone,
+            'transcript': session.transcript,
+            'recording_url': session.recording_url,
+            'completed_at': session.completed_at.isoformat() if session.completed_at else None
+        })
+    finally:
+        db_session.close()
 
 @app.route('/demo/complete-interview', methods=['POST'])
 def demo_complete_interview():
@@ -235,3 +267,4 @@ if __name__ == "__main__":
         print(f"   POST /demo/complete-interview")
     
     app.run(host=host, port=port, debug=True)
+
